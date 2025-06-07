@@ -1,6 +1,13 @@
-# Docker 镜像自动构建说明
+# Docker 多架构镜像自动构建说明
 
-本项目使用 GitHub Actions 自动构建 x86_64 架构的 PHP-FPM Docker 镜像并推送到阿里云容器镜像服务。
+本项目使用 GitHub Actions 自动构建多架构的 PHP-FPM Docker 镜像并推送到阿里云容器镜像服务。
+
+## 🏗️ 支持的架构
+
+- **linux/amd64** - 阿里云Linux服务器 (x86_64)
+- **linux/arm64** - Apple M2芯片Mac (ARM64)
+
+Docker会根据运行环境自动选择匹配的架构。
 
 ## 🔧 配置 GitHub Secrets
 
@@ -68,6 +75,7 @@ registry.cn-hangzhou.aliyuncs.com/llapi/laravel:[版本号]
 
 ### 拉取镜像
 ```bash
+# Docker会自动选择匹配当前平台的架构
 docker pull registry.cn-hangzhou.aliyuncs.com/llapi/laravel:8.3
 ```
 
@@ -84,7 +92,23 @@ services:
 
 ### 验证镜像架构
 ```bash
+# 查看镜像支持的所有架构
+docker buildx imagetools inspect registry.cn-hangzhou.aliyuncs.com/llapi/laravel:8.3
+
+# 查看本地拉取的镜像架构
 docker inspect registry.cn-hangzhou.aliyuncs.com/llapi/laravel:8.3 | grep -i arch
+```
+
+### 平台特定使用
+```bash
+# 在Apple M2芯片Mac上 (自动选择arm64)
+docker run --rm registry.cn-hangzhou.aliyuncs.com/llapi/laravel:8.3 php -v
+
+# 在阿里云Linux服务器上 (自动选择amd64)
+docker run --rm registry.cn-hangzhou.aliyuncs.com/llapi/laravel:8.3 php -v
+
+# 强制指定架构 (如果需要)
+docker run --rm --platform linux/amd64 registry.cn-hangzhou.aliyuncs.com/llapi/laravel:8.3 php -v
 ```
 
 ## ⚙️ 自定义构建配置
@@ -112,8 +136,9 @@ build-args: |
 3. 验证网络连接是否正常
 
 ### 架构问题
-- 本工作流专门构建 x86_64 (linux/amd64) 架构镜像
-- 如需 ARM64 支持，需要修改工作流配置
+- 本工作流构建多架构镜像，同时支持 linux/amd64 和 linux/arm64
+- Docker会根据运行环境自动选择合适的架构
+- 如遇架构相关问题，可使用 `--platform` 参数强制指定架构
 
 ## 📝 注意事项
 
@@ -121,6 +146,8 @@ build-args: |
 2. **费用**: 注意阿里云容器镜像服务的计费规则
 3. **存储**: 定期清理不需要的镜像版本以节省存储空间
 4. **权限**: 确保 RAM 用户有足够的权限进行镜像推送操作
+5. **多架构**: 多架构镜像会占用更多存储空间，但提供更好的兼容性
+6. **构建时间**: 多架构构建比单架构构建耗时更长
 
 ## 🔗 相关链接
 

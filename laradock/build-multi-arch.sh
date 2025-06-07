@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# 构建x86_64架构的PHP-FPM镜像并推送到阿里云镜像仓库
-# 使用方法: ./build-x86.sh [版本号]
+# 构建多架构PHP-FPM镜像并推送到阿里云镜像仓库
+# 支持架构: linux/amd64 (阿里云服务器), linux/arm64 (Apple M2芯片)
+# 使用方法: ./build-multi-arch.sh [版本号]
 # 注意: 推荐使用 GitHub Actions 自动构建，此脚本作为备用方案
 
 set -e
@@ -11,9 +12,10 @@ VERSION=${1:-"8.3"}
 IMAGE_NAME="registry.cn-hangzhou.aliyuncs.com/llapi/laravel"
 FULL_IMAGE_NAME="${IMAGE_NAME}:${VERSION}"
 
-echo "🚀 开始构建 x86_64 架构的 PHP-FPM 镜像..."
+echo "🚀 开始构建多架构 PHP-FPM 镜像..."
 echo "📦 镜像名称: ${FULL_IMAGE_NAME}"
 echo "🐘 PHP版本: ${VERSION}"
+echo "🏗️  支持架构: linux/amd64 (阿里云服务器), linux/arm64 (Apple M2芯片)"
 echo ""
 
 # 检查是否已登录阿里云镜像仓库
@@ -34,9 +36,26 @@ fi
 
 echo "🔨 开始构建镜像..."
 
-# 使用传统docker build方法，指定平台
-docker build \
-    --platform linux/amd64 \
+# 检查Docker Buildx是否可用
+if ! docker buildx version > /dev/null 2>&1; then
+    echo "❌ Docker Buildx 不可用，无法构建多架构镜像"
+    echo "💡 请升级Docker到支持buildx的版本，或使用GitHub Actions构建"
+    exit 1
+fi
+
+# 创建并使用buildx builder
+BUILDER_NAME="multiarch-builder"
+if ! docker buildx ls | grep -q "${BUILDER_NAME}"; then
+    echo "🔧 创建多架构构建器: ${BUILDER_NAME}"
+    docker buildx create --name ${BUILDER_NAME} --use --bootstrap
+else
+    echo "🔧 使用现有构建器: ${BUILDER_NAME}"
+    docker buildx use ${BUILDER_NAME}
+fi
+
+# 使用buildx构建多架构镜像
+docker buildx build \
+    --platform linux/amd64,linux/arm64 \
     --build-arg LARADOCK_PHP_VERSION=${VERSION} \
     --build-arg BASE_IMAGE_TAG_PREFIX=latest \
     --build-arg CHANGE_SOURCE=false \
@@ -104,34 +123,30 @@ docker build \
     --build-arg INSTALL_DNSUTILS=true \
     --build-arg INSTALL_POPPLER_UTILS=false \
     --tag ${FULL_IMAGE_NAME} \
+    --push \
     ./php-fpm
 
 if [ $? -eq 0 ]; then
-    echo "✅ 镜像构建成功!"
-    echo "📤 开始推送镜像到阿里云..."
-    docker push ${FULL_IMAGE_NAME}
+    echo ""
+    echo "🎉 多架构镜像构建并推送成功!"
+    echo "📦 镜像名称: ${FULL_IMAGE_NAME}"
+    echo "🏗️  支持架构: linux/amd64 (阿里云服务器), linux/arm64 (Apple M2芯片)"
+    echo ""
 
-    if [ $? -eq 0 ]; then
-        echo ""
-        echo "🎉 镜像推送成功!"
-        echo "📦 镜像名称: ${FULL_IMAGE_NAME}"
-        echo "🏗️  架构: linux/amd64 (x86_64)"
-        echo ""
+    # 验证推送的镜像
+    echo "🔍 验证镜像信息..."
+    docker buildx imagetools inspect ${FULL_IMAGE_NAME}
 
-        # 验证推送的镜像
-        echo "🔍 验证镜像信息..."
-        docker inspect ${FULL_IMAGE_NAME} | grep -i arch
-
-        echo ""
-        echo "📋 使用方法:"
-        echo "   docker pull ${FULL_IMAGE_NAME}"
-        echo ""
-        echo "💡 提示: 推荐使用 GitHub Actions 进行自动构建"
-        echo "   详见: DOCKER_BUILD_README.md"
-    else
-        echo "❌ 镜像推送失败!"
-        exit 1
-    fi
+    echo ""
+    echo "📋 使用方法:"
+    echo "   # 在Apple M2芯片Mac上:"
+    echo "   docker pull ${FULL_IMAGE_NAME}"
+    echo ""
+    echo "   # 在阿里云Linux服务器上:"
+    echo "   docker pull ${FULL_IMAGE_NAME}"
+    echo ""
+    echo "💡 提示: Docker会自动选择匹配当前平台的架构"
+    echo "💡 推荐使用 GitHub Actions 进行自动构建，详见: DOCKER_BUILD_README.md"
 else
     echo "❌ 镜像构建失败!"
     exit 1
