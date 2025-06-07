@@ -1,0 +1,170 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'laradock/php-fpm/**'
+      - '.github/workflows/build-docker.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'laradock/php-fpm/**'
+  workflow_dispatch:
+    inputs:
+      php_version:
+        description: 'PHP Version'
+        required: true
+        default: '8.3'
+        type: choice
+        options:
+          - '8.3'
+      image_tag:
+        description: 'Image Tag (留空则使用PHP版本号)'
+        required: false
+        default: ''
+
+env:
+  REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  IMAGE_NAME: llapi/laravel
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        platforms: linux/amd64
+
+    - name: Log in to Aliyun Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+        password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+    - name: Set PHP version and image tag
+      id: vars
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          PHP_VERSION="${{ github.event.inputs.php_version }}"
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+          else
+            IMAGE_TAG="${PHP_VERSION}"
+          fi
+        else
+          PHP_VERSION="8.3"
+          IMAGE_TAG="${PHP_VERSION}"
+        fi
+        
+        echo "php_version=${PHP_VERSION}" >> $GITHUB_OUTPUT
+        echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+        echo "full_image_name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}" >> $GITHUB_OUTPUT
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./laradock/php-fpm
+        platforms: linux/amd64
+        push: true
+        tags: ${{ steps.vars.outputs.full_image_name }}
+        build-args: |
+          LARADOCK_PHP_VERSION=${{ steps.vars.outputs.php_version }}
+          BASE_IMAGE_TAG_PREFIX=latest
+          CHANGE_SOURCE=false
+          INSTALL_BCMATH=true
+          INSTALL_MYSQLI=true
+          INSTALL_INTL=true
+          INSTALL_IMAGEMAGICK=true
+          INSTALL_OPCACHE=true
+          INSTALL_IMAGE_OPTIMIZERS=true
+          INSTALL_PHPREDIS=true
+          INSTALL_MEMCACHED=false
+          INSTALL_BZ2=false
+          INSTALL_ENCHANT=false
+          INSTALL_GMP=false
+          INSTALL_GNUPG=false
+          INSTALL_XDEBUG=false
+          INSTALL_PCOV=false
+          INSTALL_XHPROF=false
+          INSTALL_PHPDBG=false
+          INSTALL_SMB=false
+          INSTALL_IMAP=false
+          INSTALL_MONGO=false
+          INSTALL_AMQP=false
+          INSTALL_CASSANDRA=false
+          INSTALL_ZMQ=false
+          INSTALL_GEARMAN=false
+          INSTALL_MSSQL=false
+          INSTALL_SSH2=false
+          INSTALL_SOAP=false
+          INSTALL_XSL=false
+          INSTALL_EXIF=false
+          INSTALL_AEROSPIKE=false
+          INSTALL_OCI8=false
+          INSTALL_PGSQL=false
+          INSTALL_GHOSTSCRIPT=false
+          INSTALL_LDAP=false
+          INSTALL_PHALCON=false
+          INSTALL_SWOOLE=false
+          INSTALL_TAINT=false
+          INSTALL_PG_CLIENT=false
+          INSTALL_POSTGIS=false
+          INSTALL_PCNTL=false
+          INSTALL_CALENDAR=false
+          INSTALL_FAKETIME=false
+          INSTALL_IONCUBE=false
+          INSTALL_RDKAFKA=false
+          INSTALL_GETTEXT=false
+          INSTALL_XMLRPC=false
+          INSTALL_APCU=false
+          INSTALL_CACHETOOL=false
+          INSTALL_YAML=false
+          INSTALL_ADDITIONAL_LOCALES=false
+          INSTALL_MYSQL_CLIENT=false
+          INSTALL_PING=false
+          INSTALL_SSHPASS=false
+          INSTALL_MAILPARSE=false
+          INSTALL_WKHTMLTOPDF=false
+          INSTALL_XLSWRITER=false
+          INSTALL_PHPDECIMAL=false
+          INSTALL_ZOOKEEPER=false
+          INSTALL_SSDB=false
+          INSTALL_TRADER=false
+          INSTALL_EVENT=false
+          INSTALL_DOCKER_CLIENT=false
+          INSTALL_DNSUTILS=true
+          INSTALL_POPPLER_UTILS=false
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Verify image
+      run: |
+        echo "镜像构建完成: ${{ steps.vars.outputs.full_image_name }}"
+        echo "PHP版本: ${{ steps.vars.outputs.php_version }}"
+        echo "架构: linux/amd64 (x86_64)"
+        
+        # 验证镜像信息
+        docker buildx imagetools inspect ${{ steps.vars.outputs.full_image_name }}
+
+    - name: Output summary
+      run: |
+        echo "## 构建结果 🚀" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **镜像构建成功**" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **镜像名称**: \`${{ steps.vars.outputs.full_image_name }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **PHP版本**: \`${{ steps.vars.outputs.php_version }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **架构**: \`linux/amd64 (x86_64)\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **仓库**: 阿里云容器镜像服务" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 使用方法" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+        echo "docker pull ${{ steps.vars.outputs.full_image_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
